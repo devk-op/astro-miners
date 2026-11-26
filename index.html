@@ -1,0 +1,469 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Astro Miners</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+/* VOICE: arcade cabinet in a mining outpost — gritty, warm, a little playful
+   IDEA: the page is the ship's cockpit console; the game is the viewport
+   PICTURE: live canvas belt of drifting asteroids, copper laser, glowing ore
+   COLOUR and TYPE: space teal-black, copper laser accent, ice-blue support; Chakra Petch
+   LAYOUT: modest title, big viewport, console rail of upgrades below, short field guide */
+:root{color-scheme:dark;--bg:#0a1418;--panel:#11232a;--line:#1f3a43;--ink:#e8f1ee;--dim:#8ea8a6;--cu:#ff7a3d;--ice:#8fe3ff;--gold:#ffd23f}
+*{box-sizing:border-box;min-width:0}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 "Chakra Petch",system-ui,sans-serif;overflow-x:clip}
+.band{padding:clamp(18px,3vw,40px) max(4vw,14px);max-width:1240px;margin:0 auto}
+header{display:flex;flex-wrap:wrap;align-items:baseline;justify-content:space-between;gap:8px 24px;padding-bottom:12px}
+h1{font-size:clamp(32px,5vw,48px);line-height:1.05;margin:0;font-weight:700;text-wrap:balance}
+h1 span{color:var(--cu)}
+header p{margin:0;color:var(--dim)}
+h2{font-size:22px;margin:0 0 12px}
+.view{position:relative;height:min(68vh,620px);min-height:380px;border:2px solid var(--line);border-radius:14px;overflow:hidden;background:#050c0f;touch-action:none;user-select:none;-webkit-user-select:none}
+.view canvas{position:absolute;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.hud{position:absolute;left:12px;right:120px;top:10px;display:flex;flex-wrap:wrap;gap:8px 18px;pointer-events:none;font-size:14px;text-shadow:0 1px 2px #000}
+.hud b{font-size:17px}
+.bar{width:120px;height:8px;background:#ffffff22;border-radius:4px;overflow:hidden;margin-top:4px}
+.bar i{display:block;height:100%;width:0;border-radius:4px}
+.board{position:absolute;left:12px;bottom:12px;background:#000a;border:1px solid var(--line);border-radius:10px;padding:6px 10px;font-size:13px;pointer-events:none;min-width:150px}
+.board div{display:flex;justify-content:space-between;gap:12px;white-space:nowrap}
+.board .me{color:var(--cu);font-weight:600}
+.board i{font-style:normal;color:var(--dim);font-size:12px}
+.mute{position:absolute;right:12px;top:10px;font-size:13px;min-height:36px;padding:4px 12px;background:#000a}
+@media(max-width:600px){.mute{top:auto;bottom:calc(12px + 84px + 10px);right:12px}}
+.reset{margin-top:10px;font-size:14px;min-height:40px}
+.toast{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);background:#000a;border:1px solid var(--line);padding:6px 14px;border-radius:999px;font-size:14px;opacity:0;transition:opacity .3s;pointer-events:none;white-space:nowrap}
+.toast.on{opacity:1}
+.start{position:absolute;inset:0;display:grid;place-items:center;background:#050c0fcc;text-align:center;padding:20px}
+.start[hidden]{display:none}
+.start h3{font-size:32px;margin:0 0 6px}
+.results{margin:0 auto 16px;max-width:240px;text-align:left}.results div{display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--line)}.results .me{color:var(--cu);font-weight:600}
+.start p{margin:0 0 16px;color:var(--dim);max-width:34ch}
+button{font:600 16px "Chakra Petch",sans-serif;color:var(--ink);background:var(--panel);border:1px solid var(--line);border-radius:10px;min-height:44px;padding:8px 16px;cursor:pointer}
+button:focus-visible{outline:2px solid var(--ice);outline-offset:2px}
+button.go{background:var(--cu);color:#1a0b03;border-color:var(--cu);font-size:18px;padding:10px 28px}
+button:disabled{opacity:.45;cursor:not-allowed}
+.rail{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,190px),1fr));gap:10px;margin-top:14px}
+.up{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px;display:flex;flex-direction:column;gap:6px}
+.up .t{display:flex;justify-content:space-between;font-weight:600}
+.up .d{color:var(--dim);font-size:14px}
+.up button{width:100%}
+.dock{margin-top:14px;color:var(--dim);font-size:15px}
+.dock b{color:var(--ice)}
+.guide{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,240px),1fr));gap:16px 28px;color:var(--dim)}
+.guide b{color:var(--ink)}
+.ores{display:flex;flex-wrap:wrap;gap:8px 16px;margin-top:6px}
+.ores span{white-space:nowrap}
+.ores i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:6px}
+footer{color:var(--dim);font-size:14px;border-top:1px solid var(--line)}
+@media(max-width:600px){.view{height:62vh}.bar{width:84px}.hud{font-size:13px}}
+</style>
+</head>
+<body>
+<div class="band">
+  <header>
+    <h1>Astro<span>Miners</span></h1>
+    <p>Mine the belt. Haul the ore. Don't scratch the paint.</p>
+  </header>
+
+  <div class="view" id="view">
+    <canvas id="c"></canvas>
+    <div class="hud">
+      <div>Credits<br><b id="cr">0</b></div>
+      <div>Cargo <span id="cgt"></span><div class="bar"><i id="cgb" style="background:var(--cu)"></i></div></div>
+      <div>Hull<div class="bar"><i id="hlb" style="background:var(--ice)"></i></div></div>
+      <div>Fuel<div class="bar"><i id="flb" style="background:var(--gold)"></i></div></div>
+      <div>Depth<br><b id="dp">0</b> km</div>
+      <div>Shift<br><b id="tm">5:00</b></div>
+    </div>
+    <button class="mute" id="mute" aria-pressed="false">Sound on</button>
+    <div class="board" id="board"></div>
+    <div class="toast" id="toast"></div>
+    <div class="start" id="start">
+      <div>
+        <h3 id="st-h">Shift starts now</h3>
+        <p id="st-p">Each shift lasts 5 minutes. Out-earn the three rival miners, and only ore you sell at the station counts. Hold to fly toward your finger or cursor (or use WASD / arrows); your laser mines by itself. Watch your fuel.</p>
+        <div class="results" id="st-r"></div>
+        <button class="go" id="go">Launch</button>
+      </div>
+    </div>
+  </div>
+
+  <div class="dock" id="dock">Fly back to the <b>station</b> to sell ore and buy upgrades.</div>
+  <div class="rail" id="rail"></div>
+  <button class="reset" id="reset">New season (reset everything)</button>
+</div>
+
+<div class="band">
+  <h2>Field guide</h2>
+  <div class="guide">
+    <p><b>Deeper pays more.</b> Rocks near the station are mostly copper. Push past 8 km for ice, 16 km for gold, and 26 km if you want the purple stuff.</p>
+    <p><b>Know your rivals.</b> <span style="color:#7dffb0">Pip</span> plays it safe near home. <span style="color:#ff5d8f">Juno</span> chases the deep, rich rock. <span style="color:#f2f2f2">Vex</span> tails you and grabs ore you knock loose. They all learn which depths pay best and upgrade as they earn.</p>
+    <p><b>Beat the clock.</b> Shifts last 5 minutes and only sold ore counts, so get home before time runs out. Winning a shift pays a bonus. Thrusting burns fuel, and the station refuels you. Run dry and you limp home on reserve thrusters.</p>
+    <p><b>Mind your speed.</b> Ramming a rock dents the hull. If the hull hits zero you're towed home and the cargo is lost.</p>
+    <div><b>Ore prices</b>
+      <div class="ores">
+        <span><i style="background:var(--cu)"></i>Copper 5</span>
+        <span><i style="background:var(--ice)"></i>Ice 9</span>
+        <span><i style="background:var(--gold)"></i>Gold 22</span>
+        <span><i style="background:#c08cff"></i>Voidstone 60</span>
+      </div>
+    </div>
+  </div>
+</div>
+<footer class="band">astro-miners.com · progress saves in this browser</footer>
+
+<script>
+{
+const cv=document.getElementById('c'),ctx=cv.getContext('2d'),view=document.getElementById('view');
+const $=id=>document.getElementById(id);
+const ORES=[{n:'Copper',c:'#ff7a3d',v:5},{n:'Ice',c:'#8fe3ff',v:9},{n:'Gold',c:'#ffd23f',v:22},{n:'Voidstone',c:'#c08cff',v:60}];
+const BANDS=[[300,800],[800,1600],[1600,2600],[2600,3600]];
+const UPS=[
+  {k:'laser',n:'Mining laser',d:'Cuts rock faster',base:60},
+  {k:'cargo',n:'Cargo hold',d:'Carry more ore',base:50},
+  {k:'magnet',n:'Ore magnet',d:'Pulls ore from further',base:40},
+  {k:'hull',n:'Hull plating',d:'Take bigger hits',base:70},
+  {k:'engine',n:'Engines',d:'Fly faster, go deeper',base:80},
+  {k:'tank',n:'Fuel tank',d:'Fly further before running dry',base:45}
+];
+const BOTDEF=[
+  {name:'Pip',c:'#7dffb0',kind:'cautious',bands:[0,1],q:[6,4,0,0]},
+  {name:'Juno',c:'#ff5d8f',kind:'greedy',bands:[0,1,2,3],q:[1,3,6,10]},
+  {name:'Vex',c:'#f2f2f2',kind:'thief',bands:[0,1,2,3],q:[4,4,4,4]}
+];
+const fresh=()=>({cr:0,earned:0,lv:{laser:0,cargo:0,magnet:0,hull:0,engine:0,tank:0},best:0,wins:0,bots:BOTDEF.map(b=>({earned:0,q:b.q.slice()}))});
+let save=fresh();
+try{const s=JSON.parse(localStorage.getItem('astro-miners')||'null');if(s&&s.lv){save=Object.assign(fresh(),s);save.lv=Object.assign(fresh().lv,s.lv);if(!Array.isArray(save.bots)||save.bots.length!==3)save.bots=fresh().bots}}catch(e){}
+const persist=()=>{try{localStorage.setItem('astro-miners',JSON.stringify(save))}catch(e){}};
+const st=()=>{const l=save.lv;return{dps:22*1.45**l.laser,range:150+18*l.laser,cap:20+15*l.cargo,mag:70+30*l.magnet,hull:100+50*l.hull,acc:.16+.035*l.engine,max:4.2+.8*l.engine,fuel:100+45*l.tank}};
+const cost=u=>Math.round(u.base*1.75**save.lv[u.k]);
+
+let W=0,H=0,DPR=1;
+const resize=()=>{DPR=Math.min(2,devicePixelRatio||1);W=view.clientWidth;H=view.clientHeight;cv.width=W*DPR;cv.height=H*DPR};
+const ro=new ResizeObserver(resize);ro.observe(view);resize();
+
+const stars=Array.from({length:220},()=>({x:Math.random()*2000,y:Math.random()*2000,z:Math.random()*.6+.15}));
+const ship={x:0,y:120,vx:0,vy:0,a:-Math.PI/2,hull:100,cargo:[0,0,0,0],inv:0,fuel:100};
+const SHIFT=300*60;let shiftT=0,shiftMe=0,fuelWarn=false,fuelOut=false;
+let rocks=[],chunks=[],sparks=[],target=null,running=false,keys={},ptr=null,docked=false,frame=0,lastRank=0,vexTalk=0;
+const rnd=(a,b)=>a+Math.random()*(b-a);
+const cargoN=()=>ship.cargo.reduce((a,b)=>a+b,0);
+const dist=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+
+
+// ---- audio (synthesized, no files)
+const SFX={ctx:null,on:true,master:null,laser:null,laserG:null,thrG:null};
+try{SFX.on=localStorage.getItem('astro-miners-mute')!=='1'}catch(e){}
+function audioInit(){
+  if(SFX.ctx)return;const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return;
+  const c=new AC();SFX.ctx=c;SFX.master=c.createGain();SFX.master.gain.value=SFX.on?.5:0;SFX.master.connect(c.destination);
+  const o=c.createOscillator(),o2=c.createOscillator(),f=c.createBiquadFilter(),g=c.createGain();
+  o.type='sawtooth';o.frequency.value=110;o2.type='square';o2.frequency.value=221;f.type='lowpass';f.frequency.value=900;g.gain.value=0;
+  o.connect(f);o2.connect(f);f.connect(g);g.connect(SFX.master);o.start();o2.start();SFX.laser=o;SFX.laserG=g;
+  const len=c.sampleRate*2,buf=c.createBuffer(1,len,c.sampleRate),d=buf.getChannelData(0);for(let i=0;i<len;i++)d[i]=Math.random()*2-1;SFX.noise=buf;
+  const n=c.createBufferSource();n.buffer=buf;n.loop=true;const nf=c.createBiquadFilter();nf.type='bandpass';nf.frequency.value=500;nf.Q.value=.7;
+  const ng=c.createGain();ng.gain.value=0;n.connect(nf);nf.connect(ng);ng.connect(SFX.master);n.start();SFX.thrG=ng;
+}
+function tone(freq,dur,type='sine',vol=.3,slide=0,delay=0){const c=SFX.ctx;if(!c||!SFX.on)return;const t=c.currentTime+delay;
+  const o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(freq,t);if(slide)o.frequency.exponentialRampToValueAtTime(Math.max(30,freq*slide),t+dur);
+  g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);o.connect(g);g.connect(SFX.master);o.start(t);o.stop(t+dur+.02)}
+function burst(dur,vol=.4,freq=400){const c=SFX.ctx;if(!c||!SFX.on)return;const t=c.currentTime;
+  const s=c.createBufferSource();s.buffer=SFX.noise;const f=c.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(freq*3,t);f.frequency.exponentialRampToValueAtTime(80,t+dur);
+  const g=c.createGain();g.gain.setValueAtTime(vol,t);g.gain.exponentialRampToValueAtTime(.001,t+dur);s.connect(f);f.connect(g);g.connect(SFX.master);s.start(t,Math.random());s.stop(t+dur)}
+let pickT=0;
+const sfx={
+  pick(o){const now=performance.now();if(now-pickT<45)return;pickT=now;tone(660+o*180+Math.random()*40,.08,'triangle',.12,1.5)},
+  crack(near){if(near)burst(.35,.35,500)},
+  sell(){[523,659,784,1046].forEach((f,i)=>tone(f,.18,'triangle',.18,1,i*.07))},
+  clang(){tone(140,.3,'square',.25,.5);burst(.2,.3,900)},
+  wreck(){burst(1.1,.6,300);tone(220,.9,'sawtooth',.25,.2)},
+  buy(){tone(440,.1,'square',.12,1);tone(880,.16,'square',.12,1,.08)},
+  alert(){tone(988,.09,'sine',.15);tone(740,.14,'sine',.15,1,.1)},
+  taunt(){tone(300,.12,'sawtooth',.12,1.6);tone(240,.18,'sawtooth',.12,.7,.12)}
+};
+function audioFrame(mining,thrust,near){
+  if(!SFX.ctx)return;const t=SFX.ctx.currentTime;
+  SFX.laserG.gain.setTargetAtTime(mining?.06:0,t,.03);SFX.laser.frequency.setTargetAtTime(mining?105+Math.random()*12:90,t,.05);
+  SFX.thrG.gain.setTargetAtTime(thrust?.07:0,t,.06);
+}
+function setMute(on){SFX.on=on;if(SFX.master)SFX.master.gain.value=on?.5:0;$('mute').textContent=on?'Sound on':'Sound off';$('mute').setAttribute('aria-pressed',String(!on));try{localStorage.setItem('astro-miners-mute',on?'0':'1')}catch(e){}}
+
+// ---- rivals
+const bots=BOTDEF.map((d,i)=>{const a=i*2.1;return{...d,mem:save.bots[i],x:Math.cos(a)*60,y:Math.sin(a)*60,vx:0,vy:0,a,cargo:0,val:0,state:'seek',band:0,wp:null,t:null,chunk:null,tripStart:0}});
+const botLv=b=>Math.min(12,Math.floor(Math.log(b.mem.earned/60+1)/Math.log(1.75)));
+const bst=b=>{const l=botLv(b);return{dps:18*1.38**l,range:130,cap:18+11*l,acc:.13+.02*l,max:Math.min(7,3.3+.35*l)}};
+function pickBand(b){
+  if(b.kind==='thief'){const d=Math.hypot(ship.x,ship.y);let k=0;BANDS.forEach((r,i)=>{if(d>=r[0])k=i});return k}
+  if(Math.random()<.2)return b.bands[Math.random()*b.bands.length|0];
+  return b.bands.reduce((best,i)=>b.mem.q[i]>b.mem.q[best]?i:best,b.bands[0]);
+}
+function newWaypoint(b){
+  if(b.kind==='thief'&&Math.hypot(ship.x,ship.y)>300){b.wp={x:ship.x+rnd(-180,180),y:ship.y+rnd(-180,180)};return}
+  const [lo,hi]=BANDS[b.band],a=rnd(0,6.283),d=rnd(lo,hi);b.wp={x:Math.cos(a)*d,y:Math.sin(a)*d};
+}
+function startTrip(b){b.band=pickBand(b);b.state='seek';b.t=null;b.chunk=null;b.tripStart=frame;newWaypoint(b)}
+bots.forEach(startTrip);
+
+function steer(b,gx,gy,S){
+  let dx=gx-b.x,dy=gy-b.y;const m=Math.hypot(dx,dy)||1;dx/=m;dy/=m;
+  for(const r of rocks){if(r===b.t)continue;const ex=b.x-r.x,ey=b.y-r.y,e=Math.hypot(ex,ey);if(e<r.r+45){dx+=ex/e*1.4;dy+=ey/e*1.4}}
+  const n=Math.hypot(dx,dy)||1;b.vx+=dx/n*S.acc;b.vy+=dy/n*S.acc;
+}
+function botUpdate(b){
+  const S=bst(b);
+  if(b.cargo>=S.cap&&b.state!=='home')b.state='home';
+  if(b.state==='home'){
+    steer(b,0,0,S);
+    if(Math.hypot(b.x,b.y)<80){
+      const secs=Math.max(5,(frame-b.tripStart)/60),rate=b.val/secs;
+      b.mem.q[b.band]+=(rate-b.mem.q[b.band])*.35; // learn what this depth pays
+      b.mem.earned+=b.val;b.shift=(b.shift||0)+b.val;b.cargo=0;b.val=0;persist();startTrip(b);
+    }
+  }else{
+    // look for loose ore first
+    let best=null,bd=b.kind==='thief'?480:220;
+    for(const c of chunks){const d=dist(b,c);let score=d;if(b.kind==='thief'&&dist(c,ship)<260)score*=.4;if(score<bd){bd=score;best=c}}
+    b.chunk=best;
+    if(best){b.state='grab';steer(b,best.x,best.y,S)}
+    else{
+      if(!b.t||b.t.hp<=0||!rocks.includes(b.t)){
+        b.t=null;let rd=420;
+        for(const r of rocks){const d=dist(b,r);const rr=Math.hypot(r.x,r.y);if(d<rd&&rr>BANDS[b.band][0]*.8){rd=d;b.t=r}}
+      }
+      if(b.t){
+        const d=dist(b,b.t)-b.t.r;
+        if(d>S.range*.7){b.state='seek';steer(b,b.t.x,b.t.y,S)}
+        else{b.state='mine';b.vx*=.92;b.vy*=.92;b.t.hp-=S.dps/60;b.t.hit=3;b.t.last=b}
+      }else{
+        b.state='seek';steer(b,b.wp.x,b.wp.y,S);
+        if(Math.hypot(b.wp.x-b.x,b.wp.y-b.y)<120||frame%600===0)newWaypoint(b);
+      }
+    }
+  }
+  const sp=Math.hypot(b.vx,b.vy);if(sp>S.max){b.vx*=S.max/sp;b.vy*=S.max/sp}
+  b.vx*=.985;b.vy*=.985;b.x+=b.vx;b.y+=b.vy;
+  if(sp>.3&&b.state!=='mine')b.a=Math.atan2(b.vy,b.vx);else if(b.t)b.a=Math.atan2(b.t.y-b.y,b.t.x-b.x);
+  for(const r of rocks){const dx=b.x-r.x,dy=b.y-r.y,d=Math.hypot(dx,dy);if(d<r.r+11){b.x=r.x+dx/d*(r.r+11);b.y=r.y+dy/d*(r.r+11)}}
+  // pick up ore
+  if(b.cargo<S.cap)for(const c of chunks){if(c.t>1e8)continue;const d=dist(b,c);
+    if(d<60){c.vx+=(b.x-c.x)/d*.45;c.vy+=(b.y-c.y)/d*.45}
+    if(d<14){b.cargo++;b.val+=ORES[c.o].v;c.t=1e9;
+      if(b.kind==='thief'&&c.by==='you'&&frame>vexTalk&&dist(b,ship)<500){vexTalk=frame+900;sfx.taunt();toast(['Vex: thanks for the ore!','Vex: finders keepers.','Vex: you missed a bit.'][Math.random()*3|0])}}}
+}
+
+// ---- world
+function oreFor(d){const r=Math.random();
+  if(d>2600&&r<.18)return 3;if(d>1600&&r<.3)return 2;if(d>800&&r<.45)return 1;return r<.15&&d<400?-1:0}
+function makeRock(x,y,r){const d=Math.hypot(x,y),n=9+(r/6|0),pts=[];
+  for(let i=0;i<n;i++)pts.push(rnd(.75,1.1));
+  const k={x,y,r,vx:rnd(-.35,.35),vy:rnd(-.35,.35),rot:rnd(0,6.3),spin:rnd(-.01,.01),pts,ore:oreFor(d),hp:r*r*.09*(1+d/1500),hit:0,last:null};k.max=k.hp;return k}
+const anchors=()=>[ship,...bots];
+let spawnI=0;
+function spawnAround(){const A=anchors(),a0=A[spawnI++%A.length],minD=a0===ship?Math.max(W,H)*.7:250,ang=rnd(0,6.3),dd=rnd(minD,minD+600);
+  const x=a0.x+Math.cos(ang)*dd,y=a0.y+Math.sin(ang)*dd;
+  if(Math.hypot(x,y)<260)return;if(a0!==ship&&Math.hypot(x-ship.x,y-ship.y)<Math.max(W,H)*.6)return;rocks.push(makeRock(x,y,rnd(16,46)))}
+function seed(){rocks=[];for(let i=0;i<50;i++){const a=rnd(0,6.3),d=rnd(300,1300);rocks.push(makeRock(Math.cos(a)*d,Math.sin(a)*d,rnd(16,46)))}}
+
+function breakRock(r){
+  const count=Math.max(2,r.r/7|0),by=r.last?'bot':'you';
+  if(r.ore>=0)for(let i=0;i<count;i++)chunks.push({x:r.x+rnd(-r.r,r.r)*.5,y:r.y+rnd(-r.r,r.r)*.5,vx:rnd(-1.4,1.4),vy:rnd(-1.4,1.4),o:r.ore,t:0,by});
+  if(Math.hypot(r.x-ship.x,r.y-ship.y)<1200)for(let i=0;i<14;i++)sparks.push({x:r.x,y:r.y,vx:rnd(-3,3),vy:rnd(-3,3),l:rnd(20,40),c:'#9fb3ad'});
+  sfx.crack(Math.hypot(r.x-ship.x,r.y-ship.y)<700);
+  if(r.r>28)for(let i=0;i<2;i++){const k=makeRock(r.x+rnd(-8,8),r.y+rnd(-8,8),r.r*.55);k.ore=r.ore;k.vx=rnd(-1,1);k.vy=rnd(-1,1);rocks.push(k)}
+}
+let toastT;function toast(m){const t=$('toast');t.textContent=m;t.classList.add('on');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.remove('on'),2000)}
+
+function wreck(){
+  for(let i=0;i<40;i++)sparks.push({x:ship.x,y:ship.y,vx:rnd(-4,4),vy:rnd(-4,4),l:rnd(30,60),c:'#ff7a3d'});
+  sfx.wreck();ship.cargo=[0,0,0,0];ship.x=0;ship.y=120;ship.vx=ship.vy=0;ship.hull=st().hull;ship.fuel=st().fuel;ship.inv=120;
+  toast('Hull breached — towed home, cargo lost');
+}
+
+function update(){
+  frame++;shiftT++;const S=st();
+  const left=SHIFT-shiftT;
+  if(left===30*60){toast('30 seconds — get home and sell!');sfx.alert()}
+  if(left<=0){endShift();return}
+  let ax=0,ay=0;
+  if(keys.ArrowLeft||keys.a)ax--;if(keys.ArrowRight||keys.d)ax++;if(keys.ArrowUp||keys.w)ay--;if(keys.ArrowDown||keys.s)ay++;
+  if(ptr){const dx=ptr.x-W/2,dy=ptr.y-H/2,m=Math.hypot(dx,dy);if(m>18){ax=dx/m;ay=dy/m}}
+  const am=Math.hypot(ax,ay);
+  const pow=ship.fuel>0?1:.2;
+  if(am){ship.vx+=ax/am*S.acc*pow;ship.vy+=ay/am*S.acc*pow;ship.a=Math.atan2(ship.vy,ship.vx);
+    ship.fuel=Math.max(0,ship.fuel-.07);
+    if(ship.fuel<S.fuel*.25&&!fuelWarn){fuelWarn=true;toast('Fuel low — head home');sfx.alert()}
+    if(ship.fuel<=0&&!fuelOut){fuelOut=true;toast('Out of fuel — reserve thrusters only');sfx.clang()}
+    if(ship.fuel>0&&Math.random()<.6)sparks.push({x:ship.x-Math.cos(ship.a)*12,y:ship.y-Math.sin(ship.a)*12,vx:-ship.vx*.3+rnd(-.4,.4),vy:-ship.vy*.3+rnd(-.4,.4),l:14,c:'#8fe3ff'})}
+  const sp=Math.hypot(ship.vx,ship.vy);if(sp>S.max){ship.vx*=S.max/sp;ship.vy*=S.max/sp}
+  ship.vx*=.985;ship.vy*=.985;ship.x+=ship.vx;ship.y+=ship.vy;if(ship.inv>0)ship.inv--;
+
+  const ds=Math.hypot(ship.x,ship.y),nowDock=ds<90;
+  if(nowDock&&cargoN()){let v=0;ship.cargo.forEach((n,i)=>v+=n*ORES[i].v);save.cr+=v;save.earned+=v;shiftMe+=v;ship.cargo=[0,0,0,0];toast('Sold ore for '+v+' credits');sfx.sell();persist()}
+  if(nowDock){ship.hull=Math.min(S.hull,ship.hull+.5);ship.fuel=Math.min(S.fuel,ship.fuel+1.5);fuelWarn=fuelOut=false}
+  if(nowDock!==docked){docked=nowDock;renderRail()}
+  save.best=Math.max(save.best,ds);
+
+  for(const r of rocks){r.x+=r.vx;r.y+=r.vy;r.rot+=r.spin;if(r.hit>0)r.hit--;
+    const dx=ship.x-r.x,dy=ship.y-r.y,d=Math.hypot(dx,dy);
+    if(d<r.r+11){const nx=dx/d,ny=dy/d,rel=(ship.vx-r.vx)*-nx+(ship.vy-r.vy)*-ny;
+      ship.x=r.x+nx*(r.r+11);ship.y=r.y+ny*(r.r+11);
+      if(rel>0){ship.vx+=nx*rel*1.6;ship.vy+=ny*rel*1.6;
+        if(rel>1.4&&!ship.inv){ship.hull-=rel*7;ship.inv=30;toast('Clang!');sfx.clang();if(ship.hull<=0)wreck()}}}}
+  target=null;let bd=S.range;
+  for(const r of rocks){const d=Math.hypot(r.x-ship.x,r.y-ship.y)-r.r;if(d<bd){bd=d;target=r}}
+  if(target&&cargoN()<S.cap){target.hp-=S.dps/60;target.hit=3;target.last=null;
+    const k=target.r/Math.hypot(ship.x-target.x,ship.y-target.y);
+    if(Math.random()<.5)sparks.push({x:target.x+(ship.x-target.x)*k,y:target.y+(ship.y-target.y)*k,vx:rnd(-1.5,1.5),vy:rnd(-1.5,1.5),l:16,c:'#ffb27a'})}
+  else if(target&&Math.random()<.01)toast('Cargo full — head home');
+
+  bots.forEach(botUpdate);
+
+  const A=anchors();
+  rocks=rocks.filter(r=>{if(r.hp<=0){breakRock(r);return false}return A.some(a=>Math.hypot(r.x-a.x,r.y-a.y)<1800)});
+  let guard=0;while(rocks.length<44+16*bots.length&&guard++<40)spawnAround();
+
+  for(const c of chunks){c.t++;const dx=ship.x-c.x,dy=ship.y-c.y,d=Math.hypot(dx,dy);
+    if(d<S.mag&&cargoN()<S.cap){c.vx+=dx/d*.5;c.vy+=dy/d*.5}
+    c.vx*=.96;c.vy*=.96;c.x+=c.vx;c.y+=c.vy;
+    if(d<14&&cargoN()<S.cap&&c.t<1e8){ship.cargo[c.o]++;c.t=1e9;sfx.pick(c.o)}}
+  audioFrame(!!(target&&cargoN()<S.cap),!!am&&ship.fuel>0);
+  chunks=chunks.filter(c=>c.t<2400);
+  for(const p of sparks){p.x+=p.vx;p.y+=p.vy;p.l--}
+  sparks=sparks.filter(p=>p.l>0);
+  if(frame%30===0)renderBoard();
+}
+
+function poly(r){ctx.beginPath();r.pts.forEach((k,i)=>{const a=r.rot+i/r.pts.length*6.283;const x=r.x+Math.cos(a)*r.r*k,y=r.y+Math.sin(a)*r.r*k;i?ctx.lineTo(x,y):ctx.moveTo(x,y)});ctx.closePath()}
+function drawShip(x,y,a,body,trim){ctx.save();ctx.translate(x,y);ctx.rotate(a);
+  ctx.fillStyle=body;ctx.beginPath();ctx.moveTo(16,0);ctx.lineTo(-10,-11);ctx.lineTo(-5,0);ctx.lineTo(-10,11);ctx.closePath();ctx.fill();
+  ctx.fillStyle=trim;ctx.fillRect(-8,-12,6,4);ctx.fillRect(-8,8,6,4);
+  ctx.fillStyle='#0a1418';ctx.beginPath();ctx.arc(4,0,3.5,0,6.283);ctx.fill();ctx.fillStyle=trim;ctx.beginPath();ctx.arc(4,0,2,0,6.283);ctx.fill();ctx.restore()}
+function beam(x1,y1,x2,y2,col){ctx.globalAlpha=.6+Math.random()*.4;ctx.strokeStyle=col;ctx.lineWidth=3+Math.random()*2;ctx.lineCap='round';
+  ctx.beginPath();ctx.moveTo(x1,y1);ctx.lineTo(x2,y2);ctx.stroke();ctx.strokeStyle='#fff6';ctx.lineWidth=1;ctx.stroke();ctx.globalAlpha=1}
+
+function draw(){
+  const S=st(),t=performance.now()/1000;
+  ctx.setTransform(DPR,0,0,DPR,0,0);
+  const g=ctx.createRadialGradient(W*.3,H*.2,0,W*.5,H*.5,Math.max(W,H));
+  g.addColorStop(0,'#0f2a30');g.addColorStop(1,'#03080a');ctx.fillStyle=g;ctx.fillRect(0,0,W,H);
+  for(const s of stars){const x=((s.x-ship.x*s.z)%2000+2000)%2000,y=((s.y-ship.y*s.z)%2000+2000)%2000;
+    if(x<W&&y<H){ctx.fillStyle=`rgba(220,240,235,${s.z})`;ctx.fillRect(x,y,s.z*2.2,s.z*2.2)}}
+  ctx.save();ctx.translate(W/2-ship.x,H/2-ship.y);
+  const vis=(x,y,m)=>Math.abs(x-ship.x)<W/2+m&&Math.abs(y-ship.y)<H/2+m;
+
+  // station
+  ctx.save();
+  ctx.strokeStyle='#8fe3ff33';ctx.lineWidth=2;ctx.setLineDash([6,10]);ctx.beginPath();ctx.arc(0,0,90,0,6.283);ctx.stroke();ctx.setLineDash([]);
+  ctx.rotate(t*.2);
+  for(let i=0;i<4;i++){ctx.rotate(1.5708);ctx.fillStyle='#2b4a52';ctx.fillRect(18,-6,34,12);ctx.fillStyle='#8fe3ff';ctx.fillRect(46,-3,6,6)}
+  ctx.restore();
+  ctx.fillStyle='#1b333a';ctx.beginPath();ctx.arc(0,0,24,0,6.283);ctx.fill();
+  ctx.strokeStyle='#8fe3ff';ctx.lineWidth=3;ctx.beginPath();ctx.arc(0,0,24,0,6.283);ctx.stroke();
+  ctx.fillStyle='#ff7a3d';ctx.beginPath();ctx.arc(0,0,7+Math.sin(t*3)*1.5,0,6.283);ctx.fill();
+
+  for(const r of rocks){if(!vis(r.x,r.y,60))continue;
+    poly(r);const lg=ctx.createLinearGradient(r.x-r.r,r.y-r.r,r.x+r.r,r.y+r.r);
+    lg.addColorStop(0,r.hit?'#7e8f8b':'#5c6b68');lg.addColorStop(1,'#20292a');ctx.fillStyle=lg;ctx.fill();
+    ctx.strokeStyle='#ffffff18';ctx.lineWidth=1.5;ctx.stroke();
+    if(r.ore>=0){ctx.fillStyle=ORES[r.ore].c;for(let i=0;i<3;i++){const a=r.rot*1.3+i*2.1;ctx.beginPath();ctx.arc(r.x+Math.cos(a)*r.r*.45,r.y+Math.sin(a)*r.r*.45,Math.max(2,r.r*.11),0,6.283);ctx.fill()}}
+    if(r.hp<r.max){ctx.fillStyle='#0008';ctx.fillRect(r.x-r.r,r.y-r.r-10,r.r*2,4);ctx.fillStyle=r.last?r.last.c:'#ff7a3d';ctx.fillRect(r.x-r.r,r.y-r.r-10,r.r*2*Math.max(0,r.hp/r.max),4)}
+  }
+  for(const c of chunks){if(!vis(c.x,c.y,10))continue;ctx.fillStyle=ORES[c.o].c;ctx.shadowColor=ORES[c.o].c;ctx.shadowBlur=8;ctx.beginPath();ctx.arc(c.x,c.y,3.2,0,6.283);ctx.fill()}
+  ctx.shadowBlur=0;
+  // rivals
+  ctx.font='600 12px "Chakra Petch",sans-serif';ctx.textAlign='center';
+  for(const b of bots){if(!vis(b.x,b.y,300))continue;
+    if(b.state==='mine'&&b.t)beam(b.x,b.y,b.t.x,b.t.y,b.c);
+    drawShip(b.x,b.y,b.a,'#9fb3ad',b.c);
+    ctx.fillStyle=b.c;ctx.fillText(b.name,b.x,b.y-20)}
+  if(target&&cargoN()<S.cap)beam(ship.x+Math.cos(ship.a)*10,ship.y+Math.sin(ship.a)*10,target.x,target.y,'#ff7a3d');
+  for(const p of sparks){if(!vis(p.x,p.y,10))continue;ctx.globalAlpha=Math.min(1,p.l/20);ctx.fillStyle=p.c;ctx.fillRect(p.x-1.5,p.y-1.5,3,3)}
+  ctx.globalAlpha=1;
+  ctx.strokeStyle='#ffd23f14';ctx.lineWidth=1;ctx.beginPath();ctx.arc(ship.x,ship.y,S.mag,0,6.283);ctx.stroke();
+  if(!(ship.inv>0&&(ship.inv>>2)%2))drawShip(ship.x,ship.y,ship.a,'#e8f1ee','#ff7a3d');
+  ctx.restore();
+
+  // station arrow
+  const ds=Math.hypot(ship.x,ship.y);
+  if(ds>Math.min(W,H)*.45){const a=Math.atan2(-ship.y,-ship.x),rx=W/2+Math.cos(a)*(Math.min(W,H)/2-34),ry=H/2+Math.sin(a)*(Math.min(W,H)/2-34);
+    ctx.save();ctx.translate(rx,ry);ctx.rotate(a);ctx.fillStyle=cargoN()>=S.cap?'#ff7a3d':'#8fe3ff';ctx.beginPath();ctx.moveTo(12,0);ctx.lineTo(-6,-8);ctx.lineTo(-6,8);ctx.fill();ctx.restore()}
+
+  // radar
+  const R=W<600?42:56,cx=W-R-12,cy=H-R-12,sc=R/3600;
+  ctx.fillStyle='#000a';ctx.strokeStyle='#1f3a43';ctx.lineWidth=1;ctx.beginPath();ctx.arc(cx,cy,R,0,6.283);ctx.fill();ctx.stroke();
+  for(const b of BANDS){ctx.strokeStyle='#ffffff10';ctx.beginPath();ctx.arc(cx,cy,b[1]*sc,0,6.283);ctx.stroke()}
+  const dot=(x,y,c,s)=>{const m=Math.hypot(x,y),k=m*sc>R-3?(R-3)/(m*sc):1;ctx.fillStyle=c;ctx.beginPath();ctx.arc(cx+x*sc*k,cy+y*sc*k,s,0,6.283);ctx.fill()};
+  dot(0,0,'#8fe3ff',2.5);bots.forEach(b=>dot(b.x,b.y,b.c,2.5));dot(ship.x,ship.y,'#ff7a3d',3);
+
+  $('cr').textContent=Math.floor(save.cr).toLocaleString();
+  $('cgt').textContent=cargoN()+'/'+S.cap;
+  $('cgb').style.width=Math.min(100,cargoN()/S.cap*100)+'%';
+  $('hlb').style.width=Math.max(0,ship.hull/S.hull*100)+'%';
+  $('dp').textContent=(ds/100).toFixed(1);
+  $('flb').style.width=Math.max(0,ship.fuel/S.fuel*100)+'%';$('flb').style.background=ship.fuel<S.fuel*.25?'#ff5d5d':'var(--gold)';
+  const sl=Math.max(0,Math.ceil((SHIFT-shiftT)/60));$('tm').textContent=(sl/60|0)+':'+String(sl%60).padStart(2,'0');$('tm').style.color=sl<=30?'#ff5d5d':'';
+}
+
+function renderBoard(){
+  const rows=[{n:'You',e:shiftMe,me:true,note:''},...bots.map(b=>{const fav=b.bands.reduce((x,i)=>b.mem.q[i]>b.mem.q[x]?i:x,b.bands[0]);
+    return{n:b.name,e:b.shift||0,c:b.c,note:b.kind==='thief'?'tailing you':'likes '+(BANDS[fav][0]/100)+'–'+(BANDS[fav][1]/100)+' km'}})].sort((a,b)=>b.e-a.e);
+  $('board').innerHTML='<i>This shift</i>'+rows.map(r=>`<div class="${r.me?'me':''}"><span style="${r.c?'color:'+r.c:''}">${r.n}${r.note?' <i>'+r.note+'</i>':''}</span><span>${Math.floor(r.e).toLocaleString()}</span></div>`).join('');
+  const rank=rows.findIndex(r=>r.me);
+  if(running&&rank>lastRank){toast(rows[rank-1].n+' just passed you!');sfx.alert()}
+  else if(running&&rank<lastRank){toast('You passed '+rows[rank+1].n+'!');sfx.sell()}
+  lastRank=rank;
+}
+function renderRail(){
+  $('dock').innerHTML=docked?'<b>Docked.</b> Ore sold automatically — upgrade below.':'Fly back to the <b>station</b> to sell ore and buy upgrades.';
+  $('rail').innerHTML=UPS.map(u=>`<div class="up"><div class="t"><span>${u.n}</span><span>Lv ${save.lv[u.k]}</span></div><div class="d">${u.d}</div><button data-k="${u.k}" ${!docked||save.cr<cost(u)?'disabled':''}>${docked?'Buy · '+cost(u).toLocaleString():'Dock to buy · '+cost(u).toLocaleString()}</button></div>`).join('');
+}
+$('rail').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;const u=UPS.find(x=>x.k===b.dataset.k);const c=cost(u);
+  if(docked&&save.cr>=c){save.cr-=c;save.lv[u.k]++;if(u.k==='hull')ship.hull=st().hull;persist();renderRail();toast(u.n+' upgraded');sfx.buy()}});
+setInterval(()=>{if(docked)renderRail()},700);
+let armed=false;
+$('reset').addEventListener('click',()=>{
+  if(!armed){armed=true;$('reset').textContent='Tap again to wipe your progress and the rivals’';setTimeout(()=>{armed=false;$('reset').textContent='New season (reset everything)'},3000);return}
+  save=fresh();bots.forEach((b,i)=>{b.mem=save.bots[i];b.cargo=0;b.val=0;b.x=Math.cos(i*2.1)*60;b.y=Math.sin(i*2.1)*60;startTrip(b)});
+  persist();startShift();armed=false;$('reset').textContent='New season (reset everything)';toast('New season — good luck');
+});
+function rowsRankMe(){return bots.filter(b=>(b.shift||0)>shiftMe).length}
+function startShift(){
+  shiftT=0;shiftMe=0;fuelWarn=fuelOut=false;
+  ship.x=0;ship.y=120;ship.vx=ship.vy=0;ship.cargo=[0,0,0,0];ship.hull=st().hull;ship.fuel=st().fuel;ship.inv=0;
+  bots.forEach((b,i)=>{b.shift=0;b.cargo=0;b.val=0;b.vx=b.vy=0;b.x=Math.cos(i*2.1)*60;b.y=Math.sin(i*2.1)*60;startTrip(b)});
+  chunks=[];seed();lastRank=0;renderBoard();renderRail();
+  $('start').hidden=true;running=true;
+}
+function endShift(){
+  running=false;audioFrame(false,false);
+  const rows=[{n:'You',e:shiftMe,me:true},...bots.map(b=>({n:b.name,e:b.shift||0,c:b.c}))].sort((a,b)=>b.e-a.e||(a.me?-1:1));
+  const place=rows.findIndex(r=>r.me);let bonus=0;
+  if(place===0){bonus=Math.round(100+shiftMe*.25);save.cr+=bonus;save.wins=(save.wins||0)+1;sfx.sell()}else sfx.wreck();
+  persist();renderRail();
+  $('st-h').textContent=place===0?'You won the shift!':['','2nd place','3rd place','Last place'][place];
+  $('st-p').textContent=place===0?'Win bonus: +'+bonus+' credits. Shifts won: '+save.wins+'.':'Unsold cargo doesn\u2019t count — get home before the clock runs out.';
+  $('st-r').innerHTML=rows.map((r,i)=>`<div class="${r.me?'me':''}"><span style="${r.c?'color:'+r.c:''}">${i+1}. ${r.n}</span><span>${Math.floor(r.e).toLocaleString()}</span></div>`).join('');
+  $('go').textContent='Next shift';$('start').hidden=false;$('go').focus();
+}
+
+const pos=e=>{const b=cv.getBoundingClientRect();return{x:e.clientX-b.left,y:e.clientY-b.top}};
+cv.addEventListener('pointerdown',e=>{ptr=pos(e);cv.setPointerCapture(e.pointerId)});
+cv.addEventListener('pointermove',e=>{if(ptr)ptr=pos(e)});
+const up=()=>{ptr=null};cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+addEventListener('keydown',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;if(running&&['ArrowUp','ArrowDown','ArrowLeft','ArrowRight',' '].includes(e.key))e.preventDefault();keys[k]=true});
+addEventListener('keyup',e=>{const k=e.key.length===1?e.key.toLowerCase():e.key;keys[k]=false});
+
+function loop(){if(running)update();draw();requestAnimationFrame(loop)}
+seed();ship.hull=st().hull;renderRail();renderBoard();lastRank=rowsRankMe();
+$('go').addEventListener('click',()=>{audioInit();if(SFX.ctx&&SFX.ctx.resume)SFX.ctx.resume();startShift()});
+cv.addEventListener('pointerdown',()=>{audioInit();if(SFX.ctx&&SFX.ctx.state==='suspended')SFX.ctx.resume()});
+$('mute').addEventListener('click',()=>{audioInit();setMute(!SFX.on)});setMute(SFX.on);
+document.addEventListener('visibilitychange',()=>{if(SFX.ctx){document.hidden?SFX.ctx.suspend():SFX.ctx.resume()}});
+loop();
+}
+</script>
+</body>
+</html>
